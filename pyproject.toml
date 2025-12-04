@@ -2,10 +2,10 @@
 name = "smart-habit-tracker"
 version = "0.1.0"
 description = "Smart Habit Tracker API for HealthyMe Startup"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py313"
 line-length = 88
 
 [tool.ruff.lint]
@@ -33,7 +33,7 @@ max-complexity = 10
 quote-style = "double"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true
 ignore_missing_imports = true
 namespace_packages = true

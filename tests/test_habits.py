@@ -20,7 +20,7 @@ client = TestClient(app)
 
 # --- FIXTURE ---
 @pytest.fixture(autouse=True)
-def reset_db() -> Generator[None, None, None]:
+def reset_db() -> Generator[None]:
     """Clear database before each test."""
     repo._storage.clear()
     yield
