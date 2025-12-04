@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+
 from core.domain.base import HabitComponent
 
 
@@ -14,11 +14,11 @@ class IHabitRepository(ABC):
         pass
 
     @abstractmethod
-    def get_by_id(self, habit_id: str) -> Optional[HabitComponent]:
+    def get_by_id(self, habit_id: str) -> HabitComponent | None:
         pass
 
     @abstractmethod
-    def list_all(self) -> List[HabitComponent]:
+    def list_all(self) -> list[HabitComponent]:
         pass
 
     @abstractmethod

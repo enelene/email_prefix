@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Optional, List
+
 from core.domain.entities import Habit, Log
 from core.interfaces.repository import IHabitRepository
 
@@ -12,7 +12,7 @@ class ProgressTracker:
     def __init__(self, repo: IHabitRepository):
         self.repo = repo
 
-    def log_progress(self, habit_id: str, value: float) -> Optional[float]:
+    def log_progress(self, habit_id: str, value: float) -> float | None:
         habit = self.repo.get_by_id(habit_id)
 
         if isinstance(habit, Habit):
@@ -25,7 +25,7 @@ class ProgressTracker:
 
         return None
 
-    def get_history(self, habit_id: str) -> Optional[List[Log]]:
+    def get_history(self, habit_id: str) -> list[Log] | None:
         habit = self.repo.get_by_id(habit_id)
 
         if isinstance(habit, Habit):

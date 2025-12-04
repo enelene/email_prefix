@@ -1,7 +1,8 @@
 import uuid
-from typing import List, Optional, Dict, Any
-from core.domain.entities import Habit, HabitGroup
+from typing import Any
+
 from core.domain.base import HabitComponent
+from core.domain.entities import Habit, HabitGroup
 from core.domain.enums import Category, HabitType
 from core.interfaces.repository import IHabitRepository
 
@@ -36,8 +37,8 @@ class HabitManager:
         return group
 
     def update_habit(
-        self, habit_id: str, updates: Dict[str, Any]
-    ) -> Optional[HabitComponent]:
+        self, habit_id: str, updates: dict[str, Any]
+    ) -> HabitComponent | None:
         habit = self.repo.get_by_id(habit_id)
         if not habit:
             return None
@@ -70,8 +71,8 @@ class HabitManager:
             return True
         return False
 
-    def get_habit(self, habit_id: str) -> Optional[HabitComponent]:
+    def get_habit(self, habit_id: str) -> HabitComponent | None:
         return self.repo.get_by_id(habit_id)
 
-    def get_all(self) -> List[HabitComponent]:
+    def get_all(self) -> list[HabitComponent]:
         return self.repo.list_all()

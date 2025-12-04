@@ -1,6 +1,5 @@
-from typing import List, Optional, Dict
-from core.interfaces.repository import IHabitRepository
 from core.domain.base import HabitComponent
+from core.interfaces.repository import IHabitRepository
 
 
 class InMemoryHabitRepository(IHabitRepository):
@@ -11,18 +10,18 @@ class InMemoryHabitRepository(IHabitRepository):
     """
 
     def __init__(self) -> None:
-        self._storage: Dict[str, HabitComponent] = {}
+        self._storage: dict[str, HabitComponent] = {}
 
     def save(self, habit: HabitComponent) -> HabitComponent:
         """Saves or updates a habit/group."""
         self._storage[habit.id] = habit
         return habit
 
-    def get_by_id(self, habit_id: str) -> Optional[HabitComponent]:
+    def get_by_id(self, habit_id: str) -> HabitComponent | None:
         """Retrieves a single item by ID."""
         return self._storage.get(habit_id)
 
-    def list_all(self) -> List[HabitComponent]:
+    def list_all(self) -> list[HabitComponent]:
         """Returns all items in storage."""
         return list(self._storage.values())
 

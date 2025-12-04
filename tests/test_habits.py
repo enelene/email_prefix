@@ -1,69 +1,110 @@
+"""
+Comprehensive test suite for Smart Habit Tracker API.
+Tests CRUD operations, composite pattern, streaks, and error handling.
+"""
+
+import uuid
+from collections.abc import Generator
+from datetime import date, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
-from datetime import date, timedelta
-import uuid
-from typing import Generator
 
-# Import the app and the global repository
-from runner.main import app, repo
-from core.domain.entities import Habit, Log
+from core.domain.entities import Habit
 from core.domain.enums import Category, HabitType
 
+from runner.main import app, repo
+
 client = TestClient(app)
+
 
 # --- FIXTURE ---
 @pytest.fixture(autouse=True)
 def reset_db() -> Generator[None, None, None]:
+    """Clear database before each test."""
     repo._storage.clear()
     yield
+
 
 # ==========================================
 # 1. BASIC CRUD TESTS
 # ==========================================
 
+
 def test_create_and_get_habit() -> None:
-    # 1. Create
+    """Test creating and retrieving a habit."""
     payload = {
         "name": "Drink Water",
         "description": "2 liters",
         "category": "health",
         "habit_type": "numeric",
-        "target": 2.0
+        "target": 2.0,
     }
     response = client.post("/habits", json=payload)
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Drink Water"
+    assert data["type"] == "habit"
     habit_id = data["id"]
 
-    # 2. Get
     get_response = client.get(f"/habits/{habit_id}")
     assert get_response.status_code == 200
-    assert get_response.json()["id"] == habit_id
+    habit_data = get_response.json()
+    assert habit_data["name"] == "Drink Water"
+    assert habit_data["target"] == 2.0
+
+
+def test_list_habits() -> None:
+    """Test listing all habits."""
+    client.post(
+        "/habits",
+        json={"name": "Habit 1", "description": "desc1", "category": "health"},
+    )
+    client.post(
+        "/habits",
+        json={"name": "Habit 2", "description": "desc2", "category": "learning"},
+    )
+
+    response = client.get("/habits")
+    assert response.status_code == 200
+    habits = response.json()
+    assert len(habits) == 2
+    assert habits[0]["type"] == "habit"
+
 
 def test_update_habit() -> None:
-    # Create
-    res = client.post("/habits", json={
-        "name": "Run", "description": "5km", 
-        "category": "health", "habit_type": "numeric", "target": 5.0
-    })
+    """Test updating a habit's details."""
+    res = client.post(
+        "/habits",
+        json={
+            "name": "Run",
+            "description": "5km",
+            "category": "health",
+            "habit_type": "numeric",
+            "target": 5.0,
+        },
+    )
     habit_id = res.json()["id"]
 
-    # Update
     update_payload = {"name": "Walk", "target": 3.0}
     res = client.put(f"/habits/{habit_id}", json=update_payload)
     assert res.status_code == 200
     assert res.json()["name"] == "Walk"
-    assert res.json()["target"] == 3.0
+
+    # Verify the update persisted
+    get_res = client.get(f"/habits/{habit_id}")
+    assert get_res.json()["name"] == "Walk"
+    assert get_res.json()["target"] == 3.0
+
 
 def test_delete_habit() -> None:
-    # Create
-    res = client.post("/habits", json={
-        "name": "To Delete", "description": "desc", "category": "health"
-    })
+    """Test deleting a habit."""
+    res = client.post(
+        "/habits",
+        json={"name": "To Delete", "description": "desc", "category": "health"},
+    )
     habit_id = res.json()["id"]
 
-    # Delete
     del_res = client.delete(f"/habits/{habit_id}")
     assert del_res.status_code == 204
 
@@ -71,127 +112,295 @@ def test_delete_habit() -> None:
     get_res = client.get(f"/habits/{habit_id}")
     assert get_res.status_code == 404
 
+
 # ==========================================
 # 2. TRACKING & ACCUMULATION TESTS
 # ==========================================
 
+
 def test_log_progress_accumulation() -> None:
-    # 1. Create Habit
-    res = client.post("/habits", json={
-        "name": "Water", "description": "Hydrate", 
-        "category": "health", "habit_type": "numeric", "target": 2.0
-    })
+    """Test that progress accumulates correctly throughout the day."""
+    res = client.post(
+        "/habits",
+        json={
+            "name": "Water",
+            "description": "Hydrate",
+            "category": "health",
+            "habit_type": "numeric",
+            "target": 2.0,
+        },
+    )
     habit_id = res.json()["id"]
 
-    # 2. Log 1.0 (Morning)
-    client.post(f"/habits/{habit_id}/logs", json={"value": 1.0})
-    
-    # 3. Log 0.5 (Afternoon)
-    client.post(f"/habits/{habit_id}/logs", json={"value": 0.5})
+    # Log 1.0 (Morning)
+    log1 = client.post(f"/habits/{habit_id}/logs", json={"value": 1.0})
+    assert log1.json()["value"] == 1.0
+    assert log1.json()["is_completed"] is False
 
-    # 4. Check Logs
-    log_res = client.get(f"/habits/{habit_id}/logs")
+    # Log 0.5 (Afternoon) - total 1.5
+    log2 = client.post(f"/habits/{habit_id}/logs", json={"value": 0.5})
+    assert log2.json()["value"] == 1.5
+    assert log2.json()["is_completed"] is False
+
+    # Log 0.5 (Evening) - total 2.0 (target reached)
+    log3 = client.post(f"/habits/{habit_id}/logs", json={"value": 0.5})
+    assert log3.json()["value"] == 2.0
+    assert log3.json()["is_completed"] is True
+
+    # Check logs history
+    logs_res = client.get(f"/habits/{habit_id}/logs")
+    assert len(logs_res.json()) == 1  # One entry for today
+    assert logs_res.json()[0]["value"] == 2.0
+
+
+def test_boolean_habit_logging() -> None:
+    """Test that boolean habits accept only 0 or 1."""
+    res = client.post(
+        "/habits",
+        json={
+            "name": "Meditate",
+            "description": "10 minutes",
+            "category": "health",
+            "habit_type": "boolean",
+            "target": 1.0,
+        },
+    )
+    habit_id = res.json()["id"]
+
+    # Valid: log 1.0 (done)
+    log_res = client.post(f"/habits/{habit_id}/logs", json={"value": 1.0})
     assert log_res.status_code == 200
-    
-    stats_res = client.get(f"/habits/{habit_id}/stats")
-    assert stats_res.json()["completions"] == 0
-    
-    # 5. Log 0.5 (Evening) -> Total 2.0
-    client.post(f"/habits/{habit_id}/logs", json={"value": 0.5})
-    
-    stats_res = client.get(f"/habits/{habit_id}/stats")
-    assert stats_res.json()["completions"] == 1
+    assert log_res.json()["is_completed"] is True
+
 
 # ==========================================
 # 3. COMPOSITE PATTERN TESTS
 # ==========================================
 
+
 def test_create_routine_and_subhabits() -> None:
-    # 1. Create Routine
-    routine_res = client.post("/habits", json={
-        "name": "Morning Routine", "description": "Start day", "is_group": True
-    })
+    """Test creating a routine with sub-habits."""
+    routine_res = client.post(
+        "/habits",
+        json={"name": "Morning Routine", "description": "Start day", "is_group": True},
+    )
+    assert routine_res.json()["type"] == "routine"
     routine_id = routine_res.json()["id"]
 
-    # 2. Create Sub-habits
-    client.post(f"/habits/{routine_id}/subhabits", json={
-        "name": "Stretch", "description": "10m", 
-        "category": "health", "habit_type": "boolean", "target": 1.0
-    })
-    client.post(f"/habits/{routine_id}/subhabits", json={
-        "name": "Meditate", "description": "10m", 
-        "category": "health", "habit_type": "boolean", "target": 1.0
-    })
+    # Add sub-habits
+    client.post(
+        f"/habits/{routine_id}/subhabits",
+        json={
+            "name": "Stretch",
+            "description": "10m",
+            "category": "health",
+            "habit_type": "boolean",
+            "target": 1.0,
+        },
+    )
+    client.post(
+        f"/habits/{routine_id}/subhabits",
+        json={
+            "name": "Meditate",
+            "description": "10m",
+            "category": "health",
+            "habit_type": "boolean",
+            "target": 1.0,
+        },
+    )
 
-    # 4. Verify Structure
-    stats_res = client.get(f"/habits/{routine_id}/stats")
-    assert stats_res.status_code == 200
-    assert stats_res.json()["type"] == "routine"
-    assert stats_res.json()["sub_habits_count"] == 2
+    # Verify structure
+    routine_data = client.get(f"/habits/{routine_id}").json()
+    assert routine_data["sub_habit_count"] == 2
+    assert len(routine_data["sub_habits"]) == 2
+
 
 def test_routine_progress_calculation() -> None:
-    # 1. Create Routine
-    r_res = client.post("/habits", json={"name": "Routine", "description": "desc", "is_group": True})
+    """Test that routine progress is calculated correctly."""
+    r_res = client.post(
+        "/habits", json={"name": "Routine", "description": "desc", "is_group": True}
+    )
     r_id = r_res.json()["id"]
 
-    # 2. Add Children
-    c1 = client.post(f"/habits/{r_id}/subhabits", json={"name": "A", "description": "d", "target": 1.0})
-    # c2 = ... (unused in this specific test flow logic, kept simple)
-    client.post(f"/habits/{r_id}/subhabits", json={"name": "B", "description": "d", "target": 1.0})
-    
+    # Add two children
+    c1 = client.post(
+        f"/habits/{r_id}/subhabits",
+        json={"name": "Task A", "description": "d", "target": 1.0},
+    )
+    c2 = client.post(
+        f"/habits/{r_id}/subhabits",
+        json={"name": "Task B", "description": "d", "target": 1.0},
+    )
+
     child1_id = c1.json()["child_id"]
-    
-    # 3. Log progress
+    child2_id = c2.json()["child_id"]
+
+    # Complete only first child (50% progress)
     client.post(f"/habits/{child1_id}/logs", json={"value": 1.0})
 
-    # 4. Check Routine Stats (50% done)
     stats = client.get(f"/habits/{r_id}/stats").json()
-    assert stats["progress_today"] == 50.0
+    assert stats["data"]["progress_today"] == 50.0
+    assert stats["data"]["is_completed_today"] is False
+
+    # Complete second child (100% progress)
+    client.post(f"/habits/{child2_id}/logs", json={"value": 1.0})
+
+    stats = client.get(f"/habits/{r_id}/stats").json()
+    assert stats["data"]["progress_today"] == 100.0
+    assert stats["data"]["is_completed_today"] is True
+
 
 # ==========================================
-# 4. ADVANCED LOGIC (STREAKS)
+# 4. STREAK CALCULATION TESTS
 # ==========================================
 
-def test_streak_calculation() -> None:
+
+def test_streak_calculation_consecutive_days() -> None:
+    """Test streak calculation with consecutive days."""
     habit_id = str(uuid.uuid4())
     habit = Habit(
-        id=habit_id, name="Reading", description="Read", 
-        category=Category.LEARNING, habit_type=HabitType.BOOLEAN, target=1.0
+        id=habit_id,
+        name="Reading",
+        description="Read daily",
+        category=Category.LEARNING,
+        habit_type=HabitType.BOOLEAN,
+        target=1.0,
     )
-    
+
     today = date.today()
     yesterday = today - timedelta(days=1)
     day_before = today - timedelta(days=2)
-    
+
+    # Log 3 consecutive days
     habit.add_log(today, 1.0)
     habit.add_log(yesterday, 1.0)
     habit.add_log(day_before, 1.0)
-    
+
     repo.save(habit)
-    
-    res = client.get(f"/habits/{habit_id}/stats")
-    assert res.status_code == 200
-    # Assuming the implementation counts total completions
-    assert res.json()["completions"] == 3 
+
+    # Verify streak
+    stats = client.get(f"/habits/{habit_id}/stats").json()
+    assert stats["data"]["current_streak"] == 3
+    assert stats["data"]["completions"] == 3
+
+
+def test_streak_broken_by_gap() -> None:
+    """Test that streak is broken by a gap in days."""
+    habit_id = str(uuid.uuid4())
+    habit = Habit(
+        id=habit_id,
+        name="Exercise",
+        description="Daily exercise",
+        category=Category.HEALTH,
+        habit_type=HabitType.BOOLEAN,
+        target=1.0,
+    )
+
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    three_days_ago = today - timedelta(days=3)  # Gap!
+
+    habit.add_log(today, 1.0)
+    habit.add_log(yesterday, 1.0)
+    habit.add_log(three_days_ago, 1.0)  # This doesn't count in streak
+
+    repo.save(habit)
+
+    stats = client.get(f"/habits/{habit_id}/stats").json()
+    assert stats["data"]["current_streak"] == 2  # Only today and yesterday
+
+
+def test_streak_with_incomplete_days() -> None:
+    """Test that incomplete days break the streak."""
+    habit_id = str(uuid.uuid4())
+    habit = Habit(
+        id=habit_id,
+        name="Water",
+        description="2L water",
+        category=Category.HEALTH,
+        habit_type=HabitType.NUMERIC,
+        target=2.0,
+    )
+
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    day_before = today - timedelta(days=2)
+
+    habit.add_log(today, 2.0)  # Complete
+    habit.add_log(yesterday, 1.0)  # Incomplete (< 2.0)
+    habit.add_log(day_before, 2.0)  # Complete (but doesn't count due to gap)
+
+    repo.save(habit)
+
+    stats = client.get(f"/habits/{habit_id}/stats").json()
+    assert stats["data"]["current_streak"] == 1  # Only today
+
 
 # ==========================================
 # 5. ERROR HANDLING
 # ==========================================
 
+
 def test_get_non_existent_habit() -> None:
-    res = client.get("/habits/99999")
+    """Test getting a habit that doesn't exist."""
+    res = client.get("/habits/non-existent-id")
+    assert res.status_code == 404
+    assert "not found" in res.json()["detail"].lower()
+
+
+def test_update_non_existent_habit() -> None:
+    """Test updating a habit that doesn't exist."""
+    res = client.put("/habits/fake-id", json={"name": "New Name"})
     assert res.status_code == 404
 
-def test_log_to_group_fails() -> None:
-    r_res = client.post("/habits", json={"name": "G", "description": "d", "is_group": True})
+
+def test_delete_non_existent_habit() -> None:
+    """Test deleting a habit that doesn't exist."""
+    res = client.delete("/habits/fake-id")
+    assert res.status_code == 404
+
+
+def test_log_to_routine_fails() -> None:
+    """Test that logging to a routine returns an error."""
+    r_res = client.post(
+        "/habits", json={"name": "Routine", "description": "d", "is_group": True}
+    )
     r_id = r_res.json()["id"]
-    
+
     res = client.post(f"/habits/{r_id}/logs", json={"value": 1.0})
-    assert res.status_code in [400, 404]
+    assert res.status_code == 400
+    assert "routine" in res.json()["detail"].lower()
+
 
 def test_add_subhabit_to_non_group_fails() -> None:
-    h_res = client.post("/habits", json={"name": "H", "description": "d", "is_group": False})
+    """Test that adding a sub-habit to a non-routine fails."""
+    h_res = client.post(
+        "/habits", json={"name": "Regular Habit", "description": "d", "is_group": False}
+    )
     h_id = h_res.json()["id"]
-    
-    res = client.post(f"/habits/{h_id}/subhabits", json={"name": "Sub", "description": "d"})
+
+    res = client.post(
+        f"/habits/{h_id}/subhabits", json={"name": "Sub", "description": "d"}
+    )
     assert res.status_code == 400
+    assert "not a routine" in res.json()["detail"].lower()
+
+
+def test_add_subhabit_to_non_existent_routine() -> None:
+    """Test adding a sub-habit to a non-existent routine."""
+    res = client.post(
+        "/habits/fake-routine-id/subhabits", json={"name": "Sub", "description": "d"}
+    )
+    assert res.status_code == 400
+
+
+# ==========================================
+# 6. HEALTH CHECK
+# ==========================================
+
+
+def test_health_check() -> None:
+    """Test the health check endpoint."""
+    res = client.get("/health")
+    assert res.status_code == 200
+    assert res.json()["status"] == "healthy"
