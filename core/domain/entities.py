@@ -32,7 +32,10 @@ class Habit(HabitComponent):
         """Add or update a log entry for a specific date."""
         # Validate the value using the strategy
         if not self._strategy.validate_value(value):
-            raise ValueError(f"Invalid value {value} for habit type {self.habit_type}")
+            raise ValueError(
+                f"Invalid value {value} for habit type {self.habit_type}. "
+                f"Expected: {self._get_validation_hint()}"
+            )
 
         # Update existing log or create new one
         for log in self.logs:
@@ -40,6 +43,16 @@ class Habit(HabitComponent):
                 log.value = value
                 return
         self.logs.append(Log(date=log_date, value=value))
+
+    def _get_validation_hint(self) -> str:
+        """Get a helpful hint about valid values for this habit type."""
+        if self.habit_type.value == "boolean":
+            return "0.0 or 1.0 only"
+        if self.habit_type.value == "numeric":
+            return "any non-negative number"
+        if self.habit_type.value == "time":
+            return "0.0 to 1440.0 (minutes)"
+        return "check habit type documentation"
 
     def get_progress(self, target_date: date) -> float:
         """Get the logged value for a specific date."""

@@ -154,7 +154,7 @@ def test_log_progress_accumulation() -> None:
 
 
 def test_boolean_habit_logging() -> None:
-    """Test that boolean habits accept only 0 or 1."""
+    """Test that boolean habits replace values instead of accumulating."""
     res = client.post(
         "/habits",
         json={
@@ -167,10 +167,23 @@ def test_boolean_habit_logging() -> None:
     )
     habit_id = res.json()["id"]
 
-    # Valid: log 1.0 (done)
-    log_res = client.post(f"/habits/{habit_id}/logs", json={"value": 1.0})
-    assert log_res.status_code == 200
-    assert log_res.json()["is_completed"] is True
+    # Log 1.0 (done) - first time
+    log1 = client.post(f"/habits/{habit_id}/logs", json={"value": 1.0})
+    assert log1.status_code == 200
+    assert log1.json()["value"] == 1.0
+    assert log1.json()["is_completed"] is True
+
+    # Log 1.0 again (updating the same day) - should stay 1.0, not become 2.0
+    log2 = client.post(f"/habits/{habit_id}/logs", json={"value": 1.0})
+    assert log2.status_code == 200
+    assert log2.json()["value"] == 1.0  # Still 1.0, not 2.0!
+    assert log2.json()["is_completed"] is True
+
+    # Log 0.0 (mark as not done) - should replace
+    log3 = client.post(f"/habits/{habit_id}/logs", json={"value": 0.0})
+    assert log3.status_code == 200
+    assert log3.json()["value"] == 0.0
+    assert log3.json()["is_completed"] is False
 
 
 # ==========================================

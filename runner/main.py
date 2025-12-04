@@ -183,8 +183,14 @@ def add_sub_habit(habit_id: str, req: CreateHabitRequest) -> AddSubHabitResponse
 
 @app.post("/habits/{habit_id}/logs", response_model=LogProgressResponse)
 def log_progress(habit_id: str, req: LogRequest) -> LogProgressResponse:
-    """Record progress for a habit."""
-    result = tracker.log_progress(habit_id, req.value)
+    """
+    Record progress for a habit.
+
+    For boolean habits (done/not done), the value will replace
+    any existing value for today.For numeric habits, you can choose
+    to accumulate (add to existing) or replace.
+    """
+    result = tracker.log_progress(habit_id, req.value, req.accumulate)
 
     if result is None:
         habit = manager.get_habit(habit_id)

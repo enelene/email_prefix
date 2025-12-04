@@ -44,6 +44,10 @@ class LogRequest(BaseModel):
     value: float = Field(
         ..., ge=0, description="Amount to log (e.g., 1.0 for done, 5.0 for 5km)"
     )
+    accumulate: bool = Field(
+        default=True,
+        description="If True, add to today's existing value. If False, replace it.",
+    )
 
 
 # ============================================
